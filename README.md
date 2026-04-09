@@ -1,110 +1,133 @@
-# Cataclysm: Dark Days Ahead
+# Cataclysm: Dark Days Ahead — Headless Real-time Simulation Backend (Fork)
 
-Cataclysm: Dark Days Ahead is a turn-based survival game set in a post-apocalyptic world. While some have described it as a "zombie game", there is far more to Cataclysm than that. Struggle to survive in a harsh, persistent, procedurally generated world. Scavenge the remnants of a dead civilization for food, equipment, or, if you are lucky, a vehicle with a full tank of gas to get you the hell out of Dodge. Fight to defeat or escape from a wide variety of powerful monstrosities, from zombies to giant insects to killer robots and things far stranger and deadlier, and against the others like yourself, who want what you have...
+This branch refactors the original Cataclysm: Dark Days Ahead project into a headless, real-time simulation backend targeted at 3D engines (notably Godot). The goal is to separate rendering/UI/tiles logic from the simulation core and provide a deterministic, modular world-generation and simulation service suitable for embedding inside an engine or driving it over the network.
 
-<p align="center">
-    <img src="./data/screenshots/ultica-showcase-sep-2021.png" alt="Tileset: Ultica">
-</p>
+This repository keeps the original code for reference but shifts development toward a headless backend: an engine-agnostic core, semantic macro world generation, chunked persistence, deterministic simulation ticks, and clear integration boundaries. The `AA00REWORK` subproject contains a production-oriented world-generation MVP (.NET / C#) that can serve as a backend prototype or the basis for a Godot adapter.
 
-## Downloads
+## Core goals
 
-**Releases** - [Stable](https://cataclysmdda.org/releases/) | [Experimental](https://cataclysmdda.org/experimental/)
+- Remove/isolate all GUI, tiles, SDL, ncurses, and other rendering dependencies; the core must not depend on rendering libraries.
+- Provide a deterministic, fixed-timestep tick model suitable for replay, synchronization, and server-client architectures.
+- Support streaming, chunked persistence (macro/local chunks) with on-demand loading to reduce memory usage and scale to large worlds.
+- Offer two integration paths for Godot: an embedded native module (GDExtension) or a remote headless service (WebSocket/TCP/UDP).
+- Keep the codebase testable and verifiable: reproducible RNG seeds, versioned save formats, and determinism validation tooling.
 
-**Source** - The source can be downloaded as a [.zip archive](https://github.com/CleverRaven/Cataclysm-DDA/archive/master.zip), or cloned from our [GitHub repo](https://github.com/CleverRaven/Cataclysm-DDA/).
+## What's in this branch (high-level)
 
-[![General build matrix](https://github.com/CleverRaven/Cataclysm-DDA/actions/workflows/matrix.yml/badge.svg)](https://github.com/CleverRaven/Cataclysm-DDA/actions/workflows/matrix.yml)
-[![Coverage Status](https://coveralls.io/repos/github/CleverRaven/Cataclysm-DDA/badge.svg?branch=master)](https://coveralls.io/github/CleverRaven/Cataclysm-DDA?branch=master)
-[![Open Source Helpers](https://www.codetriage.com/cleverraven/cataclysm-dda/badges/users.svg)](https://www.codetriage.com/cleverraven/cataclysm-dda)
-[![Commit Activity](https://img.shields.io/github/commit-activity/m/CleverRaven/Cataclysm-DDA)](https://github.com/CleverRaven/Cataclysm-DDA/graphs/contributors)
-[![Lines of Code](https://tokei.rs/b1/github/CleverRaven/Cataclysm-DDA?category=code)](https://github.com/XAMPPRocky/tokei)
-[![TODOs](https://badgen.net/https/api.tickgit.com/badgen/github.com/CleverRaven/Cataclysm-DDA)](https://www.tickgit.com/browse?repo=github.com/CleverRaven/Cataclysm-DDA)
+- `AA00REWORK/` — a production-quality semantic macro + lazy local world-generation architecture (.NET 10 / C#): a deterministic pipeline, chunk persistence, LRU caches, CLI tools, and an optional Godot adapter stub. This is the recommended starting point for backend use.
+- Original `src/`, `data/` and other game components are retained for reference; new backend work should focus on headless components.
 
-### Packaging status
+See `AA00REWORK/README.md` for implementation details; that module already implements critical backend primitives: chunk management, versioned persistence, and determinism tests.
 
-#### Arch Linux
+## Quick start (AA00REWORK)
 
-Ncurses and tiles versions are available in the [community repos](https://www.archlinux.org/packages/?q=cataclysm-dda).
+Prerequisite: install the .NET SDK (recommended: .NET 10 or the version pinned in the project).
 
-```sh
-sudo pacman -S cataclysm-dda
-sudo pacman -S cataclysm-dda-tiles
+Build:
+
+```bash
+dotnet build AA00REWORK/WorldGen.slnx
 ```
 
-#### Fedora
+Generate an example world:
 
-Ncurses and tiles versions are available in the [official repos](https://src.fedoraproject.org/rpms/cataclysm-dda).
-
-```sh
-sudo dnf install cataclysm-dda
+```bash
+dotnet run --project AA00REWORK/src/WorldGen.Cli/WorldGen.Cli.csproj -- generate-world --seed 123456 --out AA00REWORK/out/example_world
 ```
 
-#### Debian / Ubuntu
+Dump macro/local summaries and validate determinism:
 
-Ncurses and tiles versions are available in the [official repos](https://tracker.debian.org/pkg/cataclysm-dda).
+```bash
+dotnet run --project AA00REWORK/src/WorldGen.Cli/WorldGen.Cli.csproj -- dump-macro-chunk --world AA00REWORK/out/example_world --x 0 --y 0
 
-```sh
-sudo apt install cataclysm-dda-curses cataclysm-dda-sdl
+dotnet run --project AA00REWORK/src/WorldGen.Cli/WorldGen.Cli.csproj -- dump-local-chunk --world AA00REWORK/out/example_world --x 0 --y 0 --z 0
+
+dotnet run --project AA00REWORK/src/WorldGen.Cli/WorldGen.Cli.csproj -- validate-determinism --world AA00REWORK/out/example_world --start-x -1 --start-y -1 --width 2 --height 2
 ```
 
-#### Flatpak
+Run tests:
 
-Download from [Flathub](https://flathub.org/apps/org.cataclysmdda.CataclysmDDA).
+```bash
+dotnet test AA00REWORK/WorldGen.slnx
+```
 
-## Compile
+AA00REWORK can be used as a headless backend prototype; you can later wrap it as a native library for Godot or run it as a network service.
 
-Please read [COMPILING.md](doc/c++/COMPILING.md) - it covers general information and more specific recipes for Linux, OS X, Windows and BSD. See [COMPILER_SUPPORT.md](doc/c++/COMPILER_SUPPORT.md) for details on which compilers we support. And you can always dig for more information in [doc/](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/doc).
+## Architecture highlights
 
-We also have the following build guides:
-* Building on Windows with `MSYS2` at [COMPILING-MSYS.md](doc/c++/COMPILING-MSYS.md)
-* Building on Windows with `vcpkg` at [COMPILING-VS-VCPKG.md](doc/c++/COMPILING-VS-VCPKG.md)
-* Building with `cmake` at [COMPILING-CMAKE.md](doc/c++/COMPILING-CMAKE.md)  (*unofficial guide*)
+- Engine-agnostic simulation core: entities, behaviors, events, and rules separated from rendering and input.
+- Macro → local generation: phase-partitioned macro generation with lazy local realization.
+- Chunked persistence: macro and local chunks stored separately; binary payload with JSON metadata sidecars for easy migration and debugging.
+- Chunk manager: thread-safe single-flight generation, LRU caching, and async generation support.
+- Adapter boundary: expose the core as a native library (C ABI / GDExtension) or a network API (HTTP/WebSocket/UDP).
 
-## Contribute
+AA00REWORK implements most of these primitives and is the preferred starting point for integrating with Godot or other 3D engines.
 
-Cataclysm: Dark Days Ahead is the result of contributions from over 1000 volunteers under the Creative Commons Attribution ShareAlike 3.0 license. The code and content of the game is free to use, modify, and redistribute for any purpose whatsoever. See https://creativecommons.org/licenses/by-sa/3.0/ for details.
-Some code distributed with the project is not part of the project and is released under different software licenses; the files covered by different software licenses have their own license notices.
+## Recommended Godot integration patterns
 
-Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+Two main approaches, chosen based on latency, complexity, and scalability needs:
 
-Special thanks to the contributors, including but not limited to, people below:
-<a href="https://github.com/cleverraven/cataclysm-dda/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=cleverraven/cataclysm-dda" />
-</a>
+1. Embedded native module (GDExtension / native)
 
-Made with [contrib.rocks](https://contrib.rocks).
+   - Build the backend core as a shared library (or add a C ABI wrapper) and call it from Godot via GDExtension.
+   - Pros: minimal latency, tight data structures, straightforward synchronization.
+   - Considerations: memory ownership, thread boundaries, Godot main-thread interaction, and efficient serialization (MessagePack/FlatBuffers recommended).
+2. Remote headless service (recommended for rapid iteration and multiplayer)
 
-## Community
+   - Run the backend as a separate process exposing WebSocket/TCP/HTTP or a custom UDP protocol; Godot clients connect to receive snapshots/deltas and send commands.
+   - Pros: independent scaling, easier hot-reload, lightweight clients.
+   - Considerations: design a tick-based snapshot/delta protocol, client-side interpolation and prediction, and include versioning + seed pairing for deterministic replays.
 
-Forums:
-https://discourse.cataclysmdda.org
+Suggested high-level protocol model (remote):
 
-GitHub repo:
-https://github.com/CleverRaven/Cataclysm-DDA
+- subscribe_world -> server returns world_profile + initial visible macro/local chunk snapshots + current_tick
+- tick_update -> contains tick_id, changed_entities (compressed diff), chunk_events
+- command -> client -> { client_id, tick_id, actor_id, action }
+- request_chunk -> fetch compressed binary or msgpack for a chunk
 
-IRC:
-`#CataclysmDDA` on [Libera Chat](https://libera.chat), https://web.libera.chat/#CataclysmDDA
+All messages should include a tick/timestamp and a protocol version to support replay and debugging.
 
-Official Discord:
-https://discord.gg/jFEc7Yp
+## Determinism recommendations
 
-## Frequently Asked Questions
+- Use a fixed-timestep simulation loop; bind all state updates to a tick id.
+- Use reproducible RNG seeds recorded in the world-profile sidecar; any change to generation or simulation logic must bump the schema/version.
+- Provide determinism validation tooling (AA00REWORK includes validation tools); add these to CI to detect regressions.
 
-#### Is there a tutorial?
+## Persistence & migrations
 
-Yes, you can find the tutorial in the **Special** menu at the main menu (be aware that due to many code changes the tutorial may not function). You can also access documentation in-game via the `?` key.
+- Persist macro chunks immediately after generation; local chunks are persisted when mutated. Deterministic, clean local realizations are regenerated on demand.
+- Use a versioned file envelope (binary payload + JSON metadata sidecar with version, seed, and generation parameters) to ease forward/backward migration.
+- Default AA00REWORK layout: `world/world-profile.*`, `macro/<x>_<y>.*`, `local/<x>_<y>_<z>.*`, plus human-readable summary files for debugging.
 
-#### How can I change the key bindings?
+## Build examples
 
-Press the `?` key, followed by the `1` key to see the full list of key commands. Press the `+` key to add a key binding, select which action with the corresponding letter key `a-w`, and then the key you wish to assign to that action.
+> Note: the root repository contains the original C++ game. The examples below focus on AA00REWORK (.NET) and a generic CMake example for C++ headless builds.
 
-#### How can I start a new world?
+AA00REWORK (.NET):
 
-**World** on the main menu will generate a fresh world for you. Select **Create World**.
+```bash
+dotnet build AA00REWORK/WorldGen.slnx
+dotnet test AA00REWORK/WorldGen.slnx
+```
 
-#### I've found a bug. What should I do?
+C++ headless (example):
 
-Please submit an issue on [our GitHub page](https://github.com/CleverRaven/Cataclysm-DDA/issues/) using [bug report template](https://github.com/CleverRaven/Cataclysm-DDA/issues/new?template=bug_report.yaml). If you're not able to, send an email to `kevin.granade@gmail.com`.
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_TILES=OFF -DENABLE_SDL=OFF -DENABLE_NCURSES=OFF
+cmake --build build -j$(nproc)
+```
 
-#### I would like to make a suggestion. What should I do?
+Adjust CMake options to match the actual CMakeLists.txt in the repo.
 
-Please submit an issue on [our GitHub page](https://github.com/CleverRaven/Cataclysm-DDA/issues/) using [feature request template](https://github.com/CleverRaven/Cataclysm-DDA/issues/new?template=feature_request.yaml).
+## Development & contribution guidelines (for this branch)
+
+- New features must prioritize headless/engine-independent design. UI/tiles code should be optional adapter code and not pollute core logic.
+- Deterministic behaviors require regression tests; new generation semantics must include repeatable verification cases.
+- When changing persistence formats or RNG behavior, add migration docs in `docs/PERSISTENCE_AND_MIGRATION.md`.
+
+## Roadmap
+
+1. Provide a stable RPC protocol spec (JSON/MsgPack/FlatBuffers examples).
+2. Implement a GDExtension wrapper example.
+3. Add a headless C++ build target and progressively remove tiles/SDL dependencies.
+4. Benchmark performance and network sync (latency/throughput/snapshot sizes).
