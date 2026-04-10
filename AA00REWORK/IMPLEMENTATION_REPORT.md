@@ -61,29 +61,32 @@ Trade-off:
 
 ### Vertical scope
 
-**Chosen:** z-aware types from day one, with bounded content for `z = -1, 0, +1`.
+**Chosen:** full CDDA-style `ZBounds(-10, +10)` from day one, backed by sparse semantic macro storage.
 
 Why:
 
-- satisfies the architectural requirement without exploding MVP complexity
-- exercises vertical derivation, bridge spans, and underground service/basement semantics early
+- satisfies the architectural requirement directly instead of deferring the deep-z model
+- keeps memory bounded by materializing only explicitly-authored or derived semantic parcels
+- exercises bridges, basements, sewers, subways, and skyscraper extrusion within the same deterministic framework
 
 Trade-off:
 
-- not a full deep multi-level underground stack yet
+- content breadth is still intentionally lighter than full CDDA, even though the z-axis and persistence model now match the full architectural depth
 
 ## Implemented deliverables
 
 - `src/WorldGen.Core`
-  - domain model (`WorldProfile`, `MacroChunk`, `LocalChunk`, `SemanticLayer`, keys, summaries)
+  - domain model (`WorldProfile`, `ZBounds`, sparse `MacroChunk`, `SemanticParcel`, `LocalChunk`, `SemanticLayer`, keys, summaries)
   - deterministic RNG + seed derivation
   - macro pipeline + local realizer
+  - declarative vertical extension rules and subsurface network generation
   - feature graph
   - chunk manager + LRU cache
 - `src/WorldGen.Persistence`
   - `FileChunkStore`
   - schema/versioned binary envelope
   - JSON metadata sidecars
+  - z-aware local chunk persistence under `local/<macro>/<x>_<y>_<z>`
 - `src/WorldGen.Cli`
   - `generate-world`
   - `dump-macro-chunk`
@@ -119,8 +122,8 @@ Result: success
 Observed summary from this session:
 
 ```text
-Total tests: 9
-Passed: 9
+Total tests: 11
+Passed: 11
 Failed: 0
 Skipped: 0
 ```
@@ -136,6 +139,8 @@ Skipped: 0
 - `ChunkPersistenceTests.Local_chunk_mutation_roundtrips_without_modifying_macro_state`
 - `ConcurrencyTests.Parallel_macro_generation_completes_without_deadlock_and_is_consistent`
 - `CliCommandTests.Generate_world_and_validate_determinism_commands_succeed`
+- `CliCommandTests.Repo_relative_world_paths_resolve_from_nested_cli_directory`
+- `VerticalExpansionTests.Vertical_derivation_extends_surface_triggers_across_full_cdda_z_bounds`
 
 ## Important assumptions
 

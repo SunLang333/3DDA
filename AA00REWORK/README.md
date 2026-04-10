@@ -6,6 +6,10 @@ A production-oriented first pass at the `AA00REWORK` semantic macro / lazy micro
 
 - Pure C# `.NET 10` simulation core in `src/WorldGen.Core`
 - Deterministic, phase-partitioned macro generation with a 9-stage pipeline
+- Full CDDA-style `ZBounds` support from `-10` through `+10`
+- Sparse semantic macro storage so implicit air / rock layers are not eagerly materialized
+- Data-driven vertical extension rules for bridges, manholes, basements, and skyscrapers
+- Independent deterministic sewer and subway networks anchored from surface semantics
 - Lazy local realization driven from persisted macro semantics
 - Versioned file persistence with MessagePack payloads + JSON metadata sidecars
 - Thread-safe chunk manager with single-flight async generation and LRU caches
@@ -38,7 +42,7 @@ dotnet test AA00REWORK/WorldGen.slnx
 
 ## Try it
 
-From the repository root:
+From the repository root, or from `src/WorldGen.Cli` using the same repo-relative `AA00REWORK/out/...` paths:
 
 ```text
 dotnet run --project AA00REWORK/src/WorldGen.Cli/WorldGen.Cli.csproj -- generate-world --seed 123456 --out AA00REWORK/out/example_world
@@ -68,12 +72,12 @@ A generated world folder contains:
 
 - `world/world-profile.bin` + `world/world-profile.json`
 - `macro/<x>_<y>.bin` + `macro/<x>_<y>.json`
-- `local/<x>_<y>_<z>.bin` + `local/<x>_<y>_<z>.json` for mutated local chunks only
+- `local/<macroX>_<macroY>/<x>_<y>_<z>.bin` + `local/<macroX>_<macroY>/<x>_<y>_<z>.json` for mutated local chunks only
 - generated demo summaries such as `world-summary.json`, `macro-0_0-summary.json`, and `local-0_0_0-summary.json`
 
 ## Notes
 
 - The core does **not** reference `Godot.*`.
 - Macro chunks are persisted immediately after first generation.
-- Local chunks are only persisted when mutated; clean deterministic realizations are regenerated on demand.
-- The first pass is intentionally bounded: the architecture is complete enough to validate determinism, persistence, and extensibility without attempting full CDDA content breadth.
+- Local chunks are only persisted when mutated; clean deterministic realizations are regenerated on demand, independently per z-level.
+- The current content set is still intentionally modest, but the underlying world profile, persistence layer, and vertical generation model now span the full CDDA-style `-10..10` z-range.

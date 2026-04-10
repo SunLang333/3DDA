@@ -26,7 +26,7 @@ public enum ChunkCompressionMode : byte
 public sealed class FileChunkStoreOptions
 {
     public required string RootPath { get; init; }
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
     public ChunkCompressionMode CompressionMode { get; init; } = ChunkCompressionMode.Lz4;
 }
 
@@ -108,7 +108,7 @@ public sealed class FileChunkStore : IChunkStore
                 ["WorldSeed"] = summary.WorldSeed.ToString(),
                 ["GenerationVersion"] = summary.GenerationVersion.ToString(),
                 ["ActiveRegionId"] = summary.ActiveRegionId,
-                ["Dimensions"] = $"macro={summary.Dimensions.MacroWidth}x{summary.Dimensions.MacroHeight};local={summary.Dimensions.LocalWidth}x{summary.Dimensions.LocalHeight}x{summary.Dimensions.LocalDepth};z={summary.Dimensions.MinZ}..{summary.Dimensions.MaxZ}"
+                ["Dimensions"] = $"macro={summary.Dimensions.MacroWidth}x{summary.Dimensions.MacroHeight};local={summary.Dimensions.LocalWidth}x{summary.Dimensions.LocalHeight}x{summary.Dimensions.LocalDepth};z={summary.ZBounds.Min}..{summary.ZBounds.Max}"
             }
         };
 
@@ -181,6 +181,8 @@ public sealed class FileChunkStore : IChunkStore
             PersistedAtUtc = DateTimeOffset.UtcNow,
             Summary = new Dictionary<string, string>
             {
+                ["MacroChunk"] = chunk.Key.Macro.ToString(),
+                ["LocalCell"] = $"{chunk.Key.X},{chunk.Key.Y},{chunk.Key.Z}",
                 ["Materials"] = string.Join(", ", summary.MaterialHistogram.OrderBy(entry => entry.Key).Select(entry => $"{entry.Key}:{entry.Value}")),
                 ["Props"] = summary.PropCount.ToString(),
                 ["Items"] = summary.ItemCount.ToString(),
@@ -224,6 +226,7 @@ public sealed class FileChunkStore : IChunkStore
 
     private async ValueTask WritePayloadAsync<T>(StoredChunkKind expectedKind, string basePath, T payload, ChunkMetadataSidecar sidecar, CancellationToken ct)
     {
+        Directory.CreateDirectory(Path.GetDirectoryName(basePath)!);
         var payloadBytes = MessagePackSerializer.Serialize(payload, _messagePackOptions);
         var header = CreateHeader(expectedKind, payloadBytes.Length);
         var output = new byte[header.Length + payloadBytes.Length];
@@ -288,7 +291,7 @@ public sealed class FileChunkStore : IChunkStore
 
     private string GetMacroBasePath(MacroChunkKey key) => Path.Combine(_options.RootPath, "macro", $"{key.X}_{key.Y}");
 
-    private string GetLocalBasePath(LocalChunkKey key) => Path.Combine(_options.RootPath, "local", $"{key.X}_{key.Y}_{key.Z}");
+    private string GetLocalBasePath(LocalChunkKey key) => Path.Combine(_options.RootPath, "local", $"{key.Macro.X}_{key.Macro.Y}", $"{key.X}_{key.Y}_{key.Z}");
 
     private static string GetBinaryPath(string basePath) => $"{basePath}.bin";
 

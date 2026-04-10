@@ -1,3 +1,4 @@
+using WorldGen.Core;
 using WorldGen.Core.Domain;
 using WorldGen.Core.Randomization;
 
@@ -9,7 +10,7 @@ public sealed class SeedDerivationTests
     public void Phase_seed_derivation_is_stable_and_phase_partitioned()
     {
         var macroKey = new MacroChunkKey(12, -8);
-        var localKey = new LocalChunkKey(7, -3, 1);
+        var localKey = LocalChunkKey.FromWorldCoordinates(7, -3, 1, WorldBootstrap.CreateDefaultProfile(123456789UL).Dimensions);
 
         var macroHydrologyA = PhaseSeedDeriver.Hash64(123456789UL, macroKey, "macro:hydrology");
         var macroHydrologyB = PhaseSeedDeriver.Hash64(123456789UL, macroKey, "macro:hydrology");

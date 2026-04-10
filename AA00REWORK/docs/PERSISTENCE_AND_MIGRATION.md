@@ -23,8 +23,9 @@ A world directory is rooted at the CLI `--out` / `--world` path.
     <x>_<y>.bin
     <x>_<y>.json
   local/
-    <x>_<y>_<z>.bin
-    <x>_<y>_<z>.json
+    <macroX>_<macroY>/
+      <x>_<y>_<z>.bin
+      <x>_<y>_<z>.json
 ```
 
 ## Binary envelope
@@ -40,7 +41,7 @@ Each `.bin` file contains:
 5. 4-byte little-endian payload length
 6. MessagePack payload bytes
 
-Current schema version: `1`
+Current schema version: `2`
 
 ## Compression
 
@@ -80,13 +81,14 @@ Rules:
 
 - macro chunks are always persisted after first generation
 - local chunks are only persisted when dirty/mutated
+- local chunk persistence is fully z-specific: one dirty `(macro, x, y, z)` slice is saved independently of the levels above or below it
 - a clean local chunk is deleted or omitted so it can be regenerated deterministically
 
 This satisfies the required macro permanence + local elision boundary.
 
 ## Migration behavior
 
-Unsupported schema versions are not silently upgraded in v1.
+Unsupported schema versions are not silently upgraded automatically.
 
 If a stored payload’s schema version does not match the current implementation:
 

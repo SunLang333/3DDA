@@ -20,9 +20,10 @@ public sealed class CommandHandlers
 
     public async Task<int> GenerateWorldAsync(ulong seed, string outputPath, int radius, TextWriter output, CancellationToken ct)
     {
-        Directory.CreateDirectory(outputPath);
+        var resolvedOutputPath = ResolvePath(outputPath, mustExist: false);
+        Directory.CreateDirectory(resolvedOutputPath);
         var profile = WorldBootstrap.CreateDefaultProfile(seed);
-        await using var manager = CreateManager(outputPath, profile);
+        await using var manager = CreateManager(resolvedOutputPath, profile);
         await manager.PersistWorldProfileAsync(ct).ConfigureAwait(false);
 
         for (var y = -radius; y <= radius; y++)
@@ -35,12 +36,12 @@ public sealed class CommandHandlers
         }
 
         var macroSummary = WorldSummaryFactory.CreateMacroSummary(await manager.GetOrCreateMacroChunkAsync(new MacroChunkKey(0, 0), ct).ConfigureAwait(false));
-        var localChunk = await manager.GetOrCreateLocalChunkAsync(new LocalChunkKey(0, 0, 0), ct).ConfigureAwait(false);
+        var localChunk = await manager.GetOrCreateLocalChunkAsync(LocalChunkKey.FromWorldCoordinates(0, 0, 0, profile.Dimensions), ct).ConfigureAwait(false);
         var localSummary = WorldSummaryFactory.CreateLocalSummary(localChunk);
-        await File.WriteAllTextAsync(Path.Combine(outputPath, "world-summary.json"), JsonSerializer.Serialize(WorldSummaryFactory.CreateWorldProfileSummary(profile), _jsonOptions), ct).ConfigureAwait(false);
-        await File.WriteAllTextAsync(Path.Combine(outputPath, "macro-0_0-summary.json"), JsonSerializer.Serialize(macroSummary, _jsonOptions), ct).ConfigureAwait(false);
-        await File.WriteAllTextAsync(Path.Combine(outputPath, "local-0_0_0-summary.json"), JsonSerializer.Serialize(localSummary, _jsonOptions), ct).ConfigureAwait(false);
-        await output.WriteLineAsync($"Wrote summaries to {outputPath}").ConfigureAwait(false);
+        await File.WriteAllTextAsync(Path.Combine(resolvedOutputPath, "world-summary.json"), JsonSerializer.Serialize(WorldSummaryFactory.CreateWorldProfileSummary(profile), _jsonOptions), ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(Path.Combine(resolvedOutputPath, "macro-0_0-summary.json"), JsonSerializer.Serialize(macroSummary, _jsonOptions), ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(Path.Combine(resolvedOutputPath, "local-0_0_0-summary.json"), JsonSerializer.Serialize(localSummary, _jsonOptions), ct).ConfigureAwait(false);
+        await output.WriteLineAsync($"Wrote summaries to {resolvedOutputPath}").ConfigureAwait(false);
         return 0;
     }
 
@@ -54,7 +55,9 @@ public sealed class CommandHandlers
             var payload = JsonSerializer.Serialize(summary, _jsonOptions);
             if (!string.IsNullOrWhiteSpace(exportPath))
             {
-                await File.WriteAllTextAsync(exportPath, payload, ct).ConfigureAwait(false);
+                var resolvedExportPath = ResolvePath(exportPath, mustExist: false);
+                Directory.CreateDirectory(Path.GetDirectoryName(resolvedExportPath)!);
+                await File.WriteAllTextAsync(resolvedExportPath, payload, ct).ConfigureAwait(false);
             }
 
             await output.WriteLineAsync(payload).ConfigureAwait(false);
@@ -67,12 +70,15 @@ public sealed class CommandHandlers
         var loaded = await LoadManagerAsync(worldPath, ct).ConfigureAwait(false);
         await using var manager = loaded.Manager;
         {
-            var chunk = await manager.GetOrCreateLocalChunkAsync(new LocalChunkKey(x, y, z), ct).ConfigureAwait(false);
+            var localKey = LocalChunkKey.FromWorldCoordinates(x, y, z, loaded.Profile.Dimensions);
+            var chunk = await manager.GetOrCreateLocalChunkAsync(localKey, ct).ConfigureAwait(false);
             var summary = WorldSummaryFactory.CreateLocalSummary(chunk);
             var payload = JsonSerializer.Serialize(summary, _jsonOptions);
             if (!string.IsNullOrWhiteSpace(exportPath))
             {
-                await File.WriteAllTextAsync(exportPath, payload, ct).ConfigureAwait(false);
+                var resolvedExportPath = ResolvePath(exportPath, mustExist: false);
+                Directory.CreateDirectory(Path.GetDirectoryName(resolvedExportPath)!);
+                await File.WriteAllTextAsync(resolvedExportPath, payload, ct).ConfigureAwait(false);
             }
 
             await output.WriteLineAsync(payload).ConfigureAwait(false);
@@ -131,11 +137,149 @@ public sealed class CommandHandlers
 
     private static async Task<(WorldProfile Profile, ChunkManager Manager)> LoadManagerAsync(string worldPath, CancellationToken ct)
     {
-        var store = new FileChunkStore(worldPath);
+        var resolvedWorldPath = ResolvePath(worldPath, mustExist: true);
+        var store = new FileChunkStore(resolvedWorldPath);
         var manager = new ChunkManager(store, new MacroGenerationPipeline(), new LocalRealizer(), new ChunkManagerOptions());
         var profile = await store.LoadWorldProfileAsync(ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"No world profile was found under {worldPath}. Run generate-world first.");
+            ?? throw new InvalidOperationException(BuildMissingWorldMessage(resolvedWorldPath));
         manager.RegisterWorldProfile(profile);
         return (profile, manager);
+    }
+
+    private static string ResolvePath(string path, bool mustExist)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (Path.IsPathRooted(path))
+        {
+            return Path.GetFullPath(path);
+        }
+
+        var relativeSegments = path.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        var anchoredWorkspaceCandidate = FindAncestorAnchoredCandidate(relativeSegments, path);
+        if (!mustExist && !string.IsNullOrWhiteSpace(anchoredWorkspaceCandidate))
+        {
+            return anchoredWorkspaceCandidate;
+        }
+
+        var candidates = new List<string>();
+        string? bestCandidate = null;
+        var bestPrefixDepth = -1;
+        for (var current = new DirectoryInfo(Directory.GetCurrentDirectory()); current is not null; current = current.Parent)
+        {
+            var candidate = Path.GetFullPath(path, current.FullName);
+            candidates.Add(candidate);
+
+            if (!mustExist)
+            {
+                var prefixDepth = CountExistingPrefixSegments(current.FullName, relativeSegments);
+                if (prefixDepth > bestPrefixDepth)
+                {
+                    bestPrefixDepth = prefixDepth;
+                    bestCandidate = candidate;
+                }
+            }
+        }
+
+        if (mustExist && !string.IsNullOrWhiteSpace(anchoredWorkspaceCandidate) && (Directory.Exists(anchoredWorkspaceCandidate) || File.Exists(anchoredWorkspaceCandidate)))
+        {
+            return anchoredWorkspaceCandidate;
+        }
+
+        foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (mustExist && (Directory.Exists(candidate) || File.Exists(candidate)))
+            {
+                return candidate;
+            }
+
+            if (!mustExist)
+            {
+                var parentDirectory = Path.GetDirectoryName(candidate);
+                if (!string.IsNullOrWhiteSpace(parentDirectory) && Directory.Exists(parentDirectory))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        if (!mustExist && !string.IsNullOrWhiteSpace(bestCandidate))
+        {
+            return bestCandidate;
+        }
+
+        return candidates.Count > 0
+            ? candidates[0]
+            : Path.GetFullPath(path);
+    }
+
+    private static string BuildMissingWorldMessage(string resolvedWorldPath)
+    {
+        var availableWorlds = FindNearbyWorlds(resolvedWorldPath);
+        return availableWorlds.Count == 0
+            ? $"No world profile was found under {resolvedWorldPath}. Run generate-world first."
+            : $"No world profile was found under {resolvedWorldPath}. Run generate-world first. Nearby world folders: {string.Join(", ", availableWorlds)}";
+    }
+
+    private static IReadOnlyList<string> FindNearbyWorlds(string resolvedWorldPath)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var worldParent = Directory.GetParent(resolvedWorldPath);
+        var parentsToScan = new[]
+        {
+            worldParent?.FullName,
+            worldParent?.Parent?.FullName
+        };
+
+        foreach (var scanRoot in parentsToScan.Where(scanRoot => !string.IsNullOrWhiteSpace(scanRoot) && Directory.Exists(scanRoot)))
+        {
+            foreach (var candidate in Directory.GetDirectories(scanRoot!))
+            {
+                if (File.Exists(Path.Combine(candidate, "world", "world-profile.bin")))
+                {
+                    result.Add(candidate);
+                }
+            }
+        }
+
+        return result.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).Take(5).ToArray();
+    }
+
+    private static int CountExistingPrefixSegments(string baseDirectory, IReadOnlyList<string> relativeSegments)
+    {
+        var prefixDepth = 0;
+        var current = baseDirectory;
+        foreach (var segment in relativeSegments)
+        {
+            current = Path.Combine(current, segment);
+            if (!Directory.Exists(current) && !File.Exists(current))
+            {
+                break;
+            }
+
+            prefixDepth++;
+        }
+
+        return prefixDepth;
+    }
+
+    private static string? FindAncestorAnchoredCandidate(IReadOnlyList<string> relativeSegments, string originalPath)
+    {
+        if (relativeSegments.Count == 0)
+        {
+            return null;
+        }
+
+        var firstSegment = relativeSegments[0];
+        for (var current = new DirectoryInfo(Directory.GetCurrentDirectory()); current is not null; current = current.Parent)
+        {
+            if (!string.Equals(current.Name, firstSegment, StringComparison.OrdinalIgnoreCase) || current.Parent is null)
+            {
+                continue;
+            }
+
+            return Path.GetFullPath(originalPath, current.Parent.FullName);
+        }
+
+        return null;
     }
 }

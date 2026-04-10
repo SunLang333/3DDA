@@ -2,3 +2,4 @@
 **/obj/
 *.lscache
 out/
+src/**/AA00REWORK/

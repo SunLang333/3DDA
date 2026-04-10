@@ -36,8 +36,8 @@ public sealed class ChunkPersistenceTests
         manager.RegisterWorldProfile(profile);
         await manager.PersistWorldProfileAsync(CancellationToken.None);
 
-        var localKey = new LocalChunkKey(0, 0, 0);
-        var macroKey = localKey.GetOwningMacroChunkKey(profile.Dimensions);
+        var localKey = LocalChunkKey.FromWorldCoordinates(0, 0, 0, profile.Dimensions);
+        var macroKey = localKey.GetOwningMacroChunkKey();
         var macroChunk = await manager.GetOrCreateMacroChunkAsync(macroKey, CancellationToken.None);
         var beforeMacroHash = macroChunk.Provenance.CanonicalHash;
         var localChunk = await manager.GetOrCreateLocalChunkAsync(localKey, CancellationToken.None);
