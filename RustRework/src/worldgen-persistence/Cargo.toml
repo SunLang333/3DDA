@@ -1,0 +1,13 @@
+[package]
+name = "worldgen-persistence"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+lz4_flex.workspace = true
+rmp-serde.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+worldgen-core = { path = "../worldgen-core" }

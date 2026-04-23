@@ -1,0 +1,30 @@
+[workspace]
+members = [
+	"src/worldgen-core",
+	"src/worldgen-persistence",
+	"src/worldgen-cli",
+	"src/worldgen-adapter-godot",
+	"tests/worldgen-tests",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+async-trait = "0.1"
+bitflags = { version = "2.6", features = ["serde"] }
+ctrlc = "3.4"
+futures = "0.3"
+lz4_flex = "0.11"
+parking_lot = "0.12"
+rmp-serde = "1.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tempfile = "3.15"
+thiserror = "2.0"
+time = { version = "0.3", features = ["formatting", "macros"] }
+tokio = { version = "1.44", features = ["fs", "macros", "rt-multi-thread", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+uuid = { version = "1.11", features = ["serde", "v4"] }

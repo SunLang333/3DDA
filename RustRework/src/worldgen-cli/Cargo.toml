@@ -1,0 +1,12 @@
+[package]
+name = "worldgen-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ctrlc.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+worldgen-core = { path = "../worldgen-core" }
+worldgen-persistence = { path = "../worldgen-persistence" }

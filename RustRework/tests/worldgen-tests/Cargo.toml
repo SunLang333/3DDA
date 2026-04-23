@@ -1,0 +1,14 @@
+[package]
+name = "worldgen-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+futures.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+worldgen-cli = { path = "../../src/worldgen-cli" }
+worldgen-core = { path = "../../src/worldgen-core" }
+worldgen-persistence = { path = "../../src/worldgen-persistence" }

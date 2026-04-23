@@ -28,13 +28,14 @@ try
 			output: Console.Out,
 			ct: cts.Token),
 		"dump-local-chunk" => await handler.DumpLocalChunkAsync(
-			worldPath: ParseRequired(options, "world"),
-			x: ParseInt32(options, "x"),
-			y: ParseInt32(options, "y"),
-			z: ParseInt32(options, "z"),
-			exportPath: ParseOptional(options, "export"),
-			output: Console.Out,
-			ct: cts.Token),
+				worldPath: ParseRequired(options, "world"),
+				x: ParseInt32(options, "x"),
+				y: ParseInt32(options, "y"),
+				z: ParseInt32(options, "z"),
+				full: options.ContainsKey("full"),
+				exportPath: ParseOptional(options, "export"),
+				output: Console.Out,
+				ct: cts.Token),
 		"validate-determinism" => await handler.ValidateDeterminismAsync(
 			worldPath: ParseRequired(options, "world"),
 			startX: ParseInt32(options, "start-x", 0),
@@ -43,6 +44,11 @@ try
 			height: ParseInt32(options, "height", 2),
 			output: Console.Out,
 			ct: cts.Token),
+		"count-items" => await handler.CountItemsAsync(
+				worldPath: ParseRequired(options, "world"),
+				surfaceOnly: options.ContainsKey("surface-only"),
+				output: Console.Out,
+				ct: cts.Token),
 		_ => ShowUsage(Console.Error)
 	};
 

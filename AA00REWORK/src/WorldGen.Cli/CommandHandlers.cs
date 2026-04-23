@@ -65,7 +65,7 @@ public sealed class CommandHandlers
         }
     }
 
-    public async Task<int> DumpLocalChunkAsync(string worldPath, int x, int y, int z, string? exportPath, TextWriter output, CancellationToken ct)
+    public async Task<int> DumpLocalChunkAsync(string worldPath, int x, int y, int z, bool full, string? exportPath, TextWriter output, CancellationToken ct)
     {
         var loaded = await LoadManagerAsync(worldPath, ct).ConfigureAwait(false);
         await using var manager = loaded.Manager;
@@ -73,7 +73,9 @@ public sealed class CommandHandlers
             var localKey = LocalChunkKey.FromWorldCoordinates(x, y, z, loaded.Profile.Dimensions);
             var chunk = await manager.GetOrCreateLocalChunkAsync(localKey, ct).ConfigureAwait(false);
             var summary = WorldSummaryFactory.CreateLocalSummary(chunk);
-            var payload = JsonSerializer.Serialize(summary, _jsonOptions);
+            var payload = full
+                ? JsonSerializer.Serialize(chunk, _jsonOptions)
+                : JsonSerializer.Serialize(summary, _jsonOptions);
             if (!string.IsNullOrWhiteSpace(exportPath))
             {
                 var resolvedExportPath = ResolvePath(exportPath, mustExist: false);
@@ -122,6 +124,84 @@ public sealed class CommandHandlers
             await output.WriteLineAsync($"Determinism validation failed for: {string.Join(", ", mismatches)}").ConfigureAwait(false);
             return 1;
         }
+    }
+
+    public async Task<int> CountItemsAsync(string worldPath, bool surfaceOnly, TextWriter output, CancellationToken ct)
+    {
+        var resolvedWorldPath = ResolvePath(worldPath, mustExist: true);
+        var loaded = await LoadManagerAsync(resolvedWorldPath, ct).ConfigureAwait(false);
+        var profile = loaded.Profile;
+        await using var manager = loaded.Manager;
+
+        var macroDir = Path.Combine(resolvedWorldPath, "macro");
+        if (!Directory.Exists(macroDir))
+        {
+            await output.WriteLineAsync("No macro directory found.").ConfigureAwait(false);
+            return 1;
+        }
+
+        var macroFiles = Directory.GetFiles(macroDir, "*.bin");
+        if (macroFiles.Length == 0)
+        {
+            await output.WriteLineAsync("No macro chunks found.").ConfigureAwait(false);
+            return 1;
+        }
+
+        var dimensions = profile.Dimensions;
+        var minZ = surfaceOnly ? 0 : dimensions.MinZ;
+        var maxZ = surfaceOnly ? 0 : dimensions.MaxZ;
+
+        var itemEntries = new Dictionary<ItemKind, long>();
+        var itemQuantities = new Dictionary<ItemKind, long>();
+        long totalEntries = 0;
+        long totalQuantity = 0;
+
+        foreach (var file in macroFiles)
+        {
+            var name = Path.GetFileNameWithoutExtension(file);
+            var parts = name.Split('_', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2 || !int.TryParse(parts[0], out var mx) || !int.TryParse(parts[1], out var my))
+            {
+                continue;
+            }
+
+            var macroKey = new WorldGen.Core.Domain.MacroChunkKey(mx, my);
+
+            for (var localX = 0; localX < dimensions.MacroWidth; localX++)
+            {
+                for (var localY = 0; localY < dimensions.MacroHeight; localY++)
+                {
+                    for (var z = minZ; z <= maxZ; z++)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var localKey = new WorldGen.Core.Domain.LocalChunkKey(macroKey, localX, localY, z);
+                        var chunk = await manager.GetOrCreateLocalChunkAsync(localKey, ct).ConfigureAwait(false);
+                        foreach (var item in chunk.Items)
+                        {
+                            itemEntries.TryGetValue(item.Type, out var entries);
+                            itemEntries[item.Type] = entries + 1;
+                            itemQuantities.TryGetValue(item.Type, out var qty);
+                            itemQuantities[item.Type] = qty + item.Quantity;
+                            totalEntries++;
+                            totalQuantity += item.Quantity;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Output concise summary
+        await output.WriteLineAsync($"Total placed item entries: {totalEntries}").ConfigureAwait(false);
+        await output.WriteLineAsync($"Total item quantity: {totalQuantity}").ConfigureAwait(false);
+        foreach (var kv in itemEntries.OrderBy(k => k.Key.ToString()))
+        {
+            var kind = kv.Key;
+            var entries = kv.Value;
+            var qty = itemQuantities.TryGetValue(kind, out var q) ? q : 0;
+            await output.WriteLineAsync($"  {kind}: entries={entries}, quantity={qty}").ConfigureAwait(false);
+        }
+
+        return 0;
     }
 
     private static ChunkManager CreateManager(string outputPath, WorldProfile profile)
